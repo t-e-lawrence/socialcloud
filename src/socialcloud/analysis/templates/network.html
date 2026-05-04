@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Instagram Network Viewer</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/vis-network/9.1.2/dist/vis-network.min.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/vis-network/9.1.2/dist/dist/vis-network.min.css"/>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f0f1a; color: #e0e0e0; height: 100vh; overflow: hidden; display: flex; }
+
+/* Graph */
+#graph-container { flex: 1; position: relative; }
+#network { width: 100%; height: 100%; }
+#controls { position: absolute; top: 12px; left: 12px; z-index: 10; display: flex; gap: 8px; }
+#controls input, #controls select { background: #1a1a2e; color: #e0e0e0; border: 1px solid #333; padding: 6px 10px; border-radius: 6px; font-size: 13px; }
+#controls input { width: 200px; }
+#controls select { min-width: 140px; }
+
+/* Community legend */
+#community-legend { position: absolute; bottom: 12px; left: 12px; background: rgba(26,26,46,0.92); border: 1px solid #333; border-radius: 8px; padding: 10px 14px; font-size: 12px; max-height: 300px; overflow-y: auto; z-index: 10; }
+#community-legend h4 { margin-bottom: 6px; color: #aaa; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; }
+.legend-item { display: flex; align-items: center; gap: 6px; padding: 2px 0; }
+.legend-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.legend-label { color: #ccc; }
+.legend-homogeneity { color: #888; font-size: 11px; }
+
+/* Side panel */
+#side-panel { width: 380px; background: #12121f; border-left: 1px solid #222; height: 100vh; overflow-y: auto; display: none; flex-shrink: 0; }
+#side-panel.open { display: block; }
+#panel-close { position: absolute; top: 8px; right: 12px; background: none; border: none; color: #888; font-size: 20px; cursor: pointer; z-index: 2; }
+#panel-close:hover { color: #fff; }
+
+/* Profile header */
+.profile-header { padding: 20px 16px 12px; border-bottom: 1px solid #222; position: relative; }
+.profile-username { font-size: 18px; font-weight: 700; color: #fff; }
+.profile-username a { color: #4A90D9; text-decoration: none; }
+.profile-name { color: #888; font-size: 13px; margin-top: 2px; }
+.profile-stats { display: flex; gap: 16px; margin-top: 10px; font-size: 12px; }
+.profile-stats .stat-val { font-weight: 700; color: #fff; }
+.profile-stats .stat-label { color: #666; }
+.profile-meta { display: flex; gap: 10px; margin-top: 8px; font-size: 11px; }
+.profile-meta span { padding: 2px 8px; border-radius: 10px; }
+.gender-male { background: #1a3a5c; color: #4A90D9; }
+.gender-female { background: #4a1a3a; color: #E84393; }
+.gender-unknown { background: #2a2a2a; color: #888; }
+.community-badge { background: #1a2a1a; color: #2ECC71; }
+
+/* Tabs */
+.tabs { display: flex; border-bottom: 1px solid #222; }
+.tab { flex: 1; padding: 10px; text-align: center; font-size: 12px; color: #666; cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.2s; }
+.tab:hover { color: #aaa; }
+.tab.active { color: #fff; border-bottom-color: #4A90D9; }
+.tab-content { display: none; padding: 12px; }
+.tab-content.active { display: block; }
+
+/* Media grid */
+.media-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
+.media-item { position: relative; aspect-ratio: 1; overflow: hidden; border-radius: 4px; cursor: pointer; }
+.media-item img { width: 100%; height: 100%; object-fit: cover; }
+.media-item:hover { opacity: 0.8; }
+.media-caption { position: absolute; bottom: 0; left: 0; right: 0; background: linear-gradient(transparent, rgba(0,0,0,0.85)); padding: 20px 6px 6px; font-size: 10px; color: #ddd; line-height: 1.3; }
+.media-meta { display: flex; gap: 8px; font-size: 10px; color: #aaa; margin-top: 3px; }
+
+/* Highlight groups */
+.highlight-group { margin-bottom: 16px; }
+.highlight-name { font-size: 12px; color: #aaa; margin-bottom: 6px; font-weight: 600; }
+
+/* Connection lists */
+.conn-section { margin-bottom: 16px; }
+.conn-header { font-size: 12px; color: #888; font-weight: 600; margin-bottom: 6px; padding-bottom: 4px; border-bottom: 1px solid #222; }
+.conn-list { max-height: 300px; overflow-y: auto; }
+.conn-item { padding: 4px 0; font-size: 13px; cursor: pointer; color: #4A90D9; }
+.conn-item:hover { color: #6AB0FF; text-decoration: underline; }
+.conn-item .in-graph { color: #4A90D9; }
+.conn-item .not-in-graph { color: #555; cursor: default; }
+
+/* Empty state */
+.empty { color: #444; font-size: 12px; padding: 20px; text-align: center; }
+
+/* Match zone */
+#match-zone { position: absolute; top: 12px; right: 12px; z-index: 10; background: rgba(26,26,46,0.85); border: 2px dashed #444; border-radius: 8px; padding: 12px 16px; font-size: 12px; color: #888; cursor: pointer; transition: all 0.2s; }
+#match-zone:hover, #match-zone.dragover { border-color: #4A90D9; color: #4A90D9; background: rgba(74,144,217,0.1); }
+#match-zone.loading { color: #F39C12; border-color: #F39C12; }
+#match-results { position: absolute; top: 60px; right: 12px; z-index: 10; background: rgba(18,18,31,0.95); border: 1px solid #333; border-radius: 8px; max-height: 400px; overflow-y: auto; display: none; width: 280px; }
+#match-results.open { display: block; }
+.match-header { padding: 8px 12px; font-size: 11px; color: #888; border-bottom: 1px solid #222; display: flex; justify-content: space-between; }
+.match-close { cursor: pointer; color: #666; }
+.match-close:hover { color: #fff; }
+.match-item { display: flex; align-items: center; gap: 8px; padding: 6px 12px; cursor: pointer; transition: background 0.1s; }
+.match-item:hover { background: rgba(255,255,255,0.05); }
+.match-rank { color: #555; font-size: 11px; width: 20px; }
+.match-name { flex: 1; font-size: 13px; color: #ccc; }
+.match-score { font-size: 11px; color: #4A90D9; font-weight: 600; }
+.match-type { font-size: 10px; color: #555; }
+
+/* Profile picture */
+.profile-pfp { width: 56px; height: 56px; border-radius: 50%; object-fit: cover; border: 2px solid #333; flex-shrink: 0; }
+
+/* Video badge */
+.video-badge { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); color: white; font-size: 24px; text-shadow: 0 0 8px rgba(0,0,0,0.8); pointer-events: none; }
+
+/* Lightbox */
+#lightbox { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 100; align-items: center; justify-content: center; cursor: pointer; }
+#lightbox.open { display: flex; }
+#lightbox img, #lightbox video { max-width: 90%; max-height: 90%; object-fit: contain; border-radius: 4px; }
+</style>
+</head>
+<body>
+
+<div id="graph-container">
+  <div id="controls">
+    <input type="text" id="search" placeholder="Search username..." autocomplete="off">
+    <select id="community-filter">
+      <option value="all">All communities</option>
+    </select>
+  </div>
+  <div id="match-zone" ondragover="event.preventDefault()" ondrop="handleDrop(event)">
+    📷 Drop photo to find matches
+  </div>
+  <div id="match-results"></div>
+  <div id="network"></div>
+  <div id="community-legend"></div>
+</div>
+
+<div id="side-panel">
+  <button id="panel-close">&times;</button>
+  <div class="profile-header" id="profile-header"></div>
+  <div class="tabs">
+    <div class="tab active" data-tab="posts">Posts</div>
+    <div class="tab" data-tab="stories">Stories</div>
+    <div class="tab" data-tab="highlights">Highlights</div>
+    <div class="tab" data-tab="connections">Connections</div>
+  </div>
+  <div class="tab-content active" id="tab-posts"></div>
+  <div class="tab-content" id="tab-stories"></div>
+  <div class="tab-content" id="tab-highlights"></div>
+  <div class="tab-content" id="tab-connections"></div>
+</div>
+
+<div id="lightbox" onclick="closeLightbox()">
+  <img id="lightbox-img" src="" style="display:none">
+  <video id="lightbox-video" src="" controls autoplay style="display:none"></video>
+</div>
+
+<script>
+// ── Data (injected by Python) ──────────────────────────────
+const NODES = {{NODES}};
+const EDGES = {{EDGES}};
+const PROFILES = {{PROFILES}};
+const COMMUNITIES = {{COMMUNITIES}};
+
+const COMMUNITY_PALETTE = [
+  "#E74C3C","#3498DB","#2ECC71","#F39C12","#9B59B6",
+  "#1ABC9C","#E67E22","#34495E","#16A085","#C0392B",
+  "#2980B9","#27AE60","#F1C40F","#8E44AD","#D35400"
+];
+
+// ── Build vis-network ──────────────────────────────────────
+const nodeDataset = new vis.DataSet(NODES.map(n => {
+  const color = COMMUNITY_PALETTE[n.community % COMMUNITY_PALETTE.length];
+  const size = 8 + 25 * Math.pow(n.followers / Math.max(...NODES.map(x=>x.followers), 1), 0.4);
+  return {
+    id: n.id, label: n.id, size: size,
+    color: {background: color, border: n.depth === 0 ? '#FFD700' : '#555',
+            highlight: {background: color, border: '#fff'}},
+    borderWidth: n.depth === 0 ? 3 : 1,
+    font: {color: '#ccc', size: 9},
+    title: `@${n.id}\n${n.display_name}\nGender: ${n.gender}\nFollowers: ${n.followers}\nCommunity: ${n.community}`,
+    community: n.community,
+    _data: n
+  };
+}));
+
+const edgeDataset = new vis.DataSet(EDGES.map((e, i) => ({
+  id: i, from: e.from, to: e.to,
+  color: {color: 'rgba(255,255,255,0.06)', highlight: 'rgba(255,255,255,0.3)'},
+  width: 0.5, arrows: {to: {scaleFactor: 0.3}}
+})));
+
+const container = document.getElementById('network');
+const network = new vis.Network(container, {nodes: nodeDataset, edges: edgeDataset}, {
+  physics: {barnesHut: {gravitationalConstant: -3000, centralGravity: 0.3, springLength: 150, damping: 0.5}},
+  interaction: {hover: true, tooltipDelay: 200, zoomView: true},
+  nodes: {shape: 'dot'},
+});
+
+// ── Community legend ───────────────────────────────────────
+const legendEl = document.getElementById('community-legend');
+let legendHTML = '<h4>Communities</h4>';
+const commFilter = document.getElementById('community-filter');
+Object.keys(COMMUNITIES).sort((a,b) => COMMUNITIES[b].size - COMMUNITIES[a].size).forEach(cid => {
+  const c = COMMUNITIES[cid];
+  const color = COMMUNITY_PALETTE[cid % COMMUNITY_PALETTE.length];
+  const hStr = c.homogeneity != null ? c.homogeneity.toFixed(3) : 'N/A';
+  legendHTML += `<div class="legend-item"><span class="legend-dot" style="background:${color}"></span><span class="legend-label">C${cid}: ${c.size} members</span><span class="legend-homogeneity">(h=${hStr})</span></div>`;
+  commFilter.innerHTML += `<option value="${cid}">C${cid} (${c.size} members)</option>`;
+});
+legendEl.innerHTML = legendHTML;
+
+// ── Community filter ───────────────────────────────────────
+commFilter.addEventListener('change', () => {
+  const val = commFilter.value;
+  if (val === 'all') {
+    nodeDataset.forEach(n => nodeDataset.update({id: n.id, hidden: false}));
+  } else {
+    const cid = parseInt(val);
+    nodeDataset.forEach(n => nodeDataset.update({id: n.id, hidden: n.community !== cid}));
+  }
+});
+
+// ── Search ─────────────────────────────────────────────────
+document.getElementById('search').addEventListener('input', (e) => {
+  const q = e.target.value.toLowerCase();
+  if (!q) { nodeDataset.forEach(n => nodeDataset.update({id: n.id, hidden: false})); return; }
+  nodeDataset.forEach(n => {
+    const match = n.id.toLowerCase().includes(q) || (n._data && n._data.display_name.toLowerCase().includes(q));
+    nodeDataset.update({id: n.id, hidden: !match});
+  });
+});
+
+// ── Node click → side panel ────────────────────────────────
+const panel = document.getElementById('side-panel');
+
+network.on('click', (params) => {
+  if (params.nodes.length === 0) { panel.classList.remove('open'); return; }
+  showProfile(params.nodes[0]);
+});
+
+document.getElementById('panel-close').addEventListener('click', () => panel.classList.remove('open'));
+
+function showProfile(username) {
+  const node = NODES.find(n => n.id === username);
+  const profile = PROFILES[username] || {};
+  if (!node) return;
+
+  panel.classList.add('open');
+
+  // Header with profile picture
+  const genderClass = node.gender === 'male' ? 'gender-male' : node.gender === 'female' ? 'gender-female' : 'gender-unknown';
+  const hStr = node.homogeneity != null ? node.homogeneity.toFixed(3) : 'N/A';
+  const pfpHTML = profile.pfp_url ? `<img class="profile-pfp" src="${profile.pfp_url}" onerror="this.style.display='none'">` : '';
+  document.getElementById('profile-header').innerHTML = `
+    <div style="display:flex;gap:12px;align-items:center">
+      ${pfpHTML}
+      <div>
+        <div class="profile-username">@${username} <a href="https://instagram.com/${username}" target="_blank">↗</a></div>
+        <div class="profile-name">${node.display_name || ''}</div>
+      </div>
+    </div>
+    <div class="profile-stats">
+      <div><span class="stat-val">${node.followers.toLocaleString()}</span> <span class="stat-label">followers</span></div>
+      <div><span class="stat-val">${node.following.toLocaleString()}</span> <span class="stat-label">following</span></div>
+    </div>
+    <div class="profile-meta">
+      <span class="${genderClass}">${node.gender}</span>
+      <span class="community-badge">C${node.community} (h=${hStr})</span>
+      ${node.is_private ? '<span style="background:#2a2a1a;color:#F39C12">🔒 private</span>' : ''}
+    </div>
+  `;
+
+  // Posts tab — full-res media via file:// paths
+  const postsHTML = (profile.posts || []).length > 0
+    ? '<div class="media-grid">' + profile.posts.map(p => `
+        <div class="media-item" onclick="openLightbox('${p.src || ''}', ${p.is_video || false})">
+          ${p.is_video
+            ? `<video src="${p.src}" muted preload="metadata" style="width:100%;height:100%;object-fit:cover"></video>
+               <div class="video-badge">▶</div>`
+            : `<img src="${p.src}" loading="lazy">`}
+          <div class="media-caption">
+            ${p.caption ? p.caption.substring(0, 60) : ''}
+            <div class="media-meta">
+              ${p.likes != null ? `❤ ${p.likes}` : ''} ${p.comments != null ? `💬 ${p.comments}` : ''}
+            </div>
+          </div>
+        </div>`).join('') + '</div>'
+    : '<div class="empty">No posts downloaded</div>';
+  document.getElementById('tab-posts').innerHTML = postsHTML;
+
+  // Stories tab
+  const storiesHTML = (profile.stories || []).length > 0
+    ? '<div class="media-grid">' + profile.stories.map(s => `
+        <div class="media-item" onclick="openLightbox('${s.src || ''}', ${s.is_video || false})">
+          ${s.is_video
+            ? `<video src="${s.src}" muted preload="metadata" style="width:100%;height:100%;object-fit:cover"></video>
+               <div class="video-badge">▶</div>`
+            : `<img src="${s.src}" loading="lazy">`}
+        </div>`).join('') + '</div>'
+    : '<div class="empty">No stories downloaded</div>';
+  document.getElementById('tab-stories').innerHTML = storiesHTML;
+
+  // Highlights tab
+  const highlights = profile.highlights || {};
+  const hlKeys = Object.keys(highlights);
+  const highlightsHTML = hlKeys.length > 0
+    ? hlKeys.map(name => `
+        <div class="highlight-group">
+          <div class="highlight-name">${name}</div>
+          <div class="media-grid">${highlights[name].map(h => `
+            <div class="media-item" onclick="openLightbox('${h.src || ''}', ${h.is_video || false})">
+              ${h.is_video
+                ? `<video src="${h.src}" muted preload="metadata" style="width:100%;height:100%;object-fit:cover"></video>
+                   <div class="video-badge">▶</div>`
+                : `<img src="${h.src}" loading="lazy">`}
+            </div>`).join('')}
+          </div>
+        </div>`).join('')
+    : '<div class="empty">No highlights downloaded</div>';
+  document.getElementById('tab-highlights').innerHTML = highlightsHTML;
+
+  // Connections tab
+  const following = profile.following || [];
+  const followedBy = profile.followed_by || [];
+  const graphNodes = new Set(NODES.map(n => n.id));
+  const connHTML = `
+    <div class="conn-section">
+      <div class="conn-header">Following (${following.length})</div>
+      <div class="conn-list">${following.map(u =>
+        graphNodes.has(u)
+          ? `<div class="conn-item in-graph" onclick="focusNode('${u}')">${u}</div>`
+          : `<div class="conn-item not-in-graph">${u}</div>`
+      ).join('')}</div>
+    </div>
+    <div class="conn-section">
+      <div class="conn-header">Followed by (${followedBy.length})</div>
+      <div class="conn-list">${followedBy.map(u =>
+        graphNodes.has(u)
+          ? `<div class="conn-item in-graph" onclick="focusNode('${u}')">${u}</div>`
+          : `<div class="conn-item not-in-graph">${u}</div>`
+      ).join('')}</div>
+    </div>`;
+  document.getElementById('tab-connections').innerHTML = connHTML;
+
+  // Reset to posts tab
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  document.querySelector('.tab[data-tab="posts"]').classList.add('active');
+  document.getElementById('tab-posts').classList.add('active');
+}
+
+// ── Tab switching ──────────────────────────────────────────
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
+  });
+});
+
+// ── Focus node (from connection list) ──────────────────────
+function focusNode(username) {
+  network.focus(username, {scale: 1.5, animation: {duration: 500, easingFunction: 'easeInOutQuad'}});
+  network.selectNodes([username]);
+  showProfile(username);
+}
+
+// ── Lightbox ───────────────────────────────────────────────
+function openLightbox(src, isVideo) {
+  if (!src) return;
+  const img = document.getElementById('lightbox-img');
+  const vid = document.getElementById('lightbox-video');
+  if (isVideo) {
+    img.style.display = 'none';
+    vid.style.display = 'block';
+    vid.src = src;
+  } else {
+    vid.style.display = 'none';
+    vid.pause();
+    img.style.display = 'block';
+    img.src = src;
+  }
+  document.getElementById('lightbox').classList.add('open');
+}
+
+function closeLightbox() {
+  document.getElementById('lightbox').classList.remove('open');
+  document.getElementById('lightbox-video').pause();
+}
+
+// ── Photo matching ─────────────────────────────────────────
+const MATCH_API = 'http://localhost:8002';
+const matchZone = document.getElementById('match-zone');
+const matchResults = document.getElementById('match-results');
+
+matchZone.addEventListener('dragover', () => matchZone.classList.add('dragover'));
+matchZone.addEventListener('dragleave', () => matchZone.classList.remove('dragover'));
+matchZone.addEventListener('click', () => {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'image/*';
+  input.onchange = (e) => { if (e.target.files[0]) processMatchFile(e.target.files[0]); };
+  input.click();
+});
+
+async function handleDrop(e) {
+  e.preventDefault();
+  matchZone.classList.remove('dragover');
+  const file = e.dataTransfer.files[0];
+  if (file && file.type.startsWith('image/')) processMatchFile(file);
+}
+
+async function processMatchFile(file) {
+  matchZone.classList.add('loading');
+  matchZone.textContent = '⏳ Encoding...';
+
+  const base64 = await new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result.split(',')[1]);
+    reader.readAsDataURL(file);
+  });
+
+  try {
+    const resp = await fetch(MATCH_API + '/match', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({image_base64: base64, top_k: 20})
+    });
+    const results = await resp.json();
+    showMatchResults(results);
+  } catch (err) {
+    matchZone.textContent = '❌ Match API not available (start: uvicorn analysis.server:app --port 8002)';
+    setTimeout(() => { matchZone.textContent = '📷 Drop photo to find matches'; matchZone.classList.remove('loading'); }, 3000);
+    return;
+  }
+
+  matchZone.textContent = '📷 Drop photo to find matches';
+  matchZone.classList.remove('loading');
+}
+
+function showMatchResults(results) {
+  let html = '<div class="match-header"><span>Matches</span><span class="match-close" onclick="matchResults.classList.remove(\'open\')">✕</span></div>';
+  results.forEach((r, i) => {
+    const inGraph = NODES.find(n => n.id === r.username);
+    html += `<div class="match-item" onclick="${inGraph ? `focusNode('${r.username}')` : ''}">
+      <span class="match-rank">#${i+1}</span>
+      <span class="match-name">${r.username}</span>
+      <span class="match-score">${(r.similarity * 100).toFixed(1)}%</span>
+      <span class="match-type">${r.matched_content.replace('_', ' ')}</span>
+    </div>`;
+  });
+  matchResults.innerHTML = html;
+  matchResults.classList.add('open');
+}
+</script>
+</body>
+</html>

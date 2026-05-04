@@ -1,0 +1,74 @@
+services:
+  chrome:
+    image: browserless/chrome
+    ports:
+      - "9222:3000"
+    environment:
+      - CONNECTION_TIMEOUT=600000
+    restart: unless-stopped
+
+  gender_detection:
+    build:
+      context: .
+      dockerfile: docker/gender_detection.Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/data:z
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    restart: unless-stopped
+
+  profile_downloader:
+    build:
+      context: .
+      dockerfile: docker/profile_downloader.Dockerfile
+    ports:
+      - "8001:8001"
+    environment:
+      - CHROME_DEBUG_PORT=3000
+      - CHROME_HOST=chrome
+    volumes:
+      - ./data:/data:z
+    depends_on:
+      - chrome
+    restart: unless-stopped
+
+  crawler:
+    build:
+      context: .
+      dockerfile: docker/crawler.Dockerfile
+    environment:
+      - PROFILE_DOWNLOADER_BASE=http://profile_downloader:8001
+      - GENDER_DETECTION_BASE=http://gender_detection:8000
+      - CRAWLER_DB_PATH=/data/network.db
+    volumes:
+      - ./data:/data:z
+    depends_on:
+      - gender_detection
+      - profile_downloader
+    profiles: [cli]
+
+  analysis:
+    build:
+      context: .
+      dockerfile: docker/analysis.Dockerfile
+    environment:
+      - CRAWLER_DB_PATH=/data/network.db
+      - DOWNLOADS_DIR=/data/downloads
+      - ANALYSIS_OUTPUT_DIR=/data/output
+    volumes:
+      - ./data:/data:z
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    profiles: [cli]

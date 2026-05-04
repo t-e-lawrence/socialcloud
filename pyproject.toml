@@ -1,0 +1,53 @@
+[project]
+name = "socialcloud"
+version = "0.1.0"
+description = "Bring-your-own-data social network analysis: CLIP embeddings, Wasserstein distances, Louvain communities, interactive viewer"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+authors = [{ name = "Oliver Grund" }]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+dependencies = [
+    "fastapi",
+    "uvicorn[standard]",
+    "aiosqlite",
+    "pydantic",
+    "Pillow",
+    "numpy",
+    "scipy",
+    "torch",
+    "open-clip-torch",
+    "networkx",
+    "python-louvain",
+    "matplotlib",
+    "seaborn",
+]
+
+[project.optional-dependencies]
+dev = ["ruff", "pytest"]
+
+[project.scripts]
+analyze = "socialcloud.analysis.__main__:main"
+
+[project.urls]
+Repository = "https://github.com/t-e-lawrence/socialcloud"
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+extend-ignore = ["E402", "E741", "F841"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/socialcloud"]
